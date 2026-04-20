@@ -1,0 +1,48 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Deck {
+  id          String    @id @default(cuid())
+  title       String
+  fileName    String
+  pdfHash     String    @unique
+  createdAt   DateTime  @default(now())
+  lastStudied DateTime?
+  cards       Card[]
+}
+
+model Card {
+  id          String      @id @default(cuid())
+  front       String
+  back        String
+  topic       String
+  type        String
+  source      String
+  deckId      String
+  deck        Deck        @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  easeFactor  Float       @default(2.5)
+  interval    Int         @default(1)
+  repetitions Int         @default(0)
+  dueDate     DateTime    @default(now())
+  reviews     ReviewLog[]
+
+  @@index([deckId])
+  @@index([dueDate])
+  @@index([deckId, dueDate])
+}
+
+model ReviewLog {
+  id         String   @id @default(cuid())
+  cardId     String
+  card       Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  rating     Int
+  reviewedAt DateTime @default(now())
+
+  @@index([cardId])
+  @@index([reviewedAt])
+}

@@ -1,65 +1,151 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import toast from 'react-hot-toast'
+import LoadingIngestion from '@/components/LoadingIngestion'
+import { PageTransition } from '@/components/PageTransition'
+
+export default function HomePage() {
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [fileName, setFileName] = useState('')
+  const [fileSizeBytes, setFileSizeBytes] = useState(0)
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return
+
+    setError(null)
+
+    // Client-side checks
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF files are accepted.')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setError('File too large. Maximum size is 20MB.')
+      return
+    }
+
+    setFileName(file.name)
+    setFileSizeBytes(file.size)
+    setLoading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('pdf', file)
+      formData.append('title', file.name.replace(/\.pdf$/i, ''))
+
+      const res = await fetch('/api/ingest', { method: 'POST', body: formData })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong')
+        return
+      }
+
+      if (data.existing) {
+        toast.success('You already have this deck!')
+        router.push(`/decks/${data.deckId}`)
+      } else if (data.deck) {
+        toast.success(`${data.deck.cards.length} flashcards created!`)
+        router.push(`/decks/${data.deck.id}`)
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return <LoadingIngestion fileName={fileName} fileSizeBytes={fileSizeBytes} />
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <PageTransition>
+      <div className="min-h-screen flex flex-col items-center justify-center px-4">
+        <h1 className="text-4xl font-bold text-gray-900">Flashcard Engine</h1>
+        <p className="text-xl text-gray-400 mt-2">
+          Turn any PDF into smart flashcards in seconds
+        </p>
+
+        {/* Upload zone */}
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setIsDragging(false)
+            handleFile(e.dataTransfer.files[0])
+          }}
+          className={`
+            mt-10 w-full max-w-lg border-2 border-dashed rounded-2xl p-16
+            text-center cursor-pointer transition-colors
+            ${
+              isDragging
+                ? 'border-blue-400 bg-blue-50/30'
+                : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/30'
+            }
+          `}
+        >
+          {/* Upload icon */}
+          <svg
+            className="w-10 h-10 mx-auto text-gray-300"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            viewBox="0 0 24 24"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 16V4m0 0L7 9m5-5l5 5"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+            />
+          </svg>
+
+          <p className="text-lg font-medium mt-4 text-gray-700">
+            Drop your PDF here
+          </p>
+          <p className="text-sm text-gray-400">or click to browse</p>
+          <p className="text-xs text-gray-300 mt-1">
+            Supports any PDF up to 20MB
+          </p>
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+            className="hidden"
+          />
         </div>
-      </main>
-    </div>
-  );
+
+        {/* Error message */}
+        {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+
+        {/* View decks link */}
+        <Link
+          href="/decks"
+          className="text-blue-500 text-sm mt-8 hover:underline"
+        >
+          View my decks →
+        </Link>
+      </div>
+    </PageTransition>
+  )
 }
