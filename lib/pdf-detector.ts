@@ -11,6 +11,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = join(
   'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'
 )
 
+const STANDARD_FONT_DATA_URL = join(
+  process.cwd(),
+  'node_modules/pdfjs-dist/standard_fonts/'
+)
+
 // ---------------------------------------------------------------------------
 // Image hash helper — simple sum of first 100 byte values
 // Used to deduplicate repeated template images (logos, headers, watermarks)
@@ -29,18 +34,29 @@ function hashImageBytes(data: Uint8Array): number {
 // Walks every page's XObject dictionary and applies three filters to decide
 // whether the PDF contains meaningful educational images.
 // ---------------------------------------------------------------------------
-export async function detectPDFType(buffer: Buffer): Promise<'vision' | 'text'> {
+export async function detectPDFType(
+  buffer: Buffer,
+  options: { maxPages?: number, skipPages?: number } = {}
+): Promise<'vision' | 'text'> {
   let doc: pdfjsLib.PDFDocumentProxy
 
   try {
     const data = new Uint8Array(buffer)
-    doc = await pdfjsLib.getDocument({ data, disableFontFace: true }).promise
+    doc = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
   } catch (err) {
     console.error('[pdf-detector] detectPDFType getDocument failed:', err)
     throw new Error('Invalid or corrupted PDF file')
   }
 
   const totalPages = doc.numPages
+  const skip = options.skipPages || 0
+  const startPage = Math.min(1 + skip, totalPages)
+  
+  let pagesToScan = totalPages - startPage + 1
+  if (options.maxPages) {
+    pagesToScan = Math.min(pagesToScan, options.maxPages)
+  }
+  const endPage = startPage + pagesToScan - 1
 
   // First pass — collect image metadata from every page
   const imageRecords: {
@@ -54,7 +70,7 @@ export async function detectPDFType(buffer: Buffer): Promise<'vision' | 'text'> 
   // Track which pages each hash appears on (for frequency filter)
   const hashToPages = new Map<number, Set<number>>()
 
-  for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+  for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
     const page = await doc.getPage(pageNum)
     const viewport = page.getViewport({ scale: 1.0 })
     const pageHeight = viewport.height
@@ -142,7 +158,7 @@ export async function detectPDFType(buffer: Buffer): Promise<'vision' | 'text'> 
 
     // Filter 3 — Frequency: skip template elements appearing on >30% of pages
     const pagesWithHash = hashToPages.get(img.hash)?.size ?? 0
-    if (totalPages > 1 && pagesWithHash / totalPages > 0.3) continue
+    if (pagesToScan > 1 && pagesWithHash / pagesToScan > 0.3) continue
 
     // Image passed all three filters — this PDF has educational images
     return 'vision'
@@ -161,7 +177,7 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
 
   try {
     const data = new Uint8Array(buffer)
-    doc = await pdfjsLib.getDocument({ data, disableFontFace: true }).promise
+    doc = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
   } catch (err) {
     console.error('[pdf-detector] extractText getDocument failed:', err)
     throw new Error('Invalid or corrupted PDF file')
@@ -187,4 +203,50 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   }
 
   return pages.join('\n\n')
+}
+
+// ---------------------------------------------------------------------------
+// getPDFPageCount
+// Returns the total number of pages in the PDF buffer.
+// ---------------------------------------------------------------------------
+export async function getPDFPageCount(buffer: Buffer): Promise<number> {
+  const data = new Uint8Array(buffer)
+  const pdf = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
+  return pdf.numPages
+}
+
+// Threshold: chunk anything over 200 pages
+export const CHUNK_THRESHOLD = 40
+export const CHUNK_SIZE = 80  // Kept at 80 pages to respect Gemini's 5 requests/min free tier limit during text chunking
+
+export async function extractTextByChunks(
+  buffer: Buffer,
+  chunkSize: number = 30
+): Promise<{ chunkIndex: number; startPage: number; endPage: number; text: string }[]> {
+
+  const data = new Uint8Array(buffer)
+  const pdf = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
+  const totalPages = pdf.numPages
+  const chunks = []
+
+  for (let startPage = 1; startPage <= totalPages; startPage += chunkSize) {
+    const endPage = Math.min(startPage + chunkSize - 1, totalPages)
+    let chunkText = ''
+
+    for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+      const content = await page.getTextContent()
+      const pageText = content.items.map((item: any) => item.str).join(' ')
+      chunkText += `\n\n--- Page ${pageNum} ---\n${pageText}`
+    }
+
+    chunks.push({
+      chunkIndex: chunks.length,
+      startPage,
+      endPage,
+      text: chunkText.trim()
+    })
+  }
+
+  return chunks
 }

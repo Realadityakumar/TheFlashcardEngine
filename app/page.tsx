@@ -17,6 +17,10 @@ export default function HomePage() {
   const [fileName, setFileName] = useState('')
   const [fileSizeBytes, setFileSizeBytes] = useState(0)
 
+  const [status, setStatus] = useState<'idle' | 'analyzing' | 'processing' | 'saving' | 'done' | 'error'>('idle')
+  const [eta, setEta] = useState<number | null>(null)
+  const [pdfInfo, setPdfInfo] = useState<{pageCount: number; type: string} | null>(null)
+
   async function handleFile(file: File | undefined) {
     if (!file) return
 
@@ -35,6 +39,9 @@ export default function HomePage() {
     setFileName(file.name)
     setFileSizeBytes(file.size)
     setLoading(true)
+    setStatus('analyzing')
+    setEta(null)
+    setPdfInfo(null)
 
     try {
       const formData = new FormData()
@@ -42,29 +49,76 @@ export default function HomePage() {
       formData.append('title', file.name.replace(/\.pdf$/i, ''))
 
       const res = await fetch('/api/ingest', { method: 'POST', body: formData })
-      const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Something went wrong')
+        let json;
+        try { json = await res.json() } catch(e) {}
+        setError(json?.error || 'Something went wrong processing your PDF.')
+        setLoading(false)
+        setStatus('idle')
         return
       }
 
-      if (data.existing) {
-        toast.success('You already have this deck!')
-        router.push(`/decks/${data.deckId}`)
-      } else if (data.deck) {
-        toast.success(`${data.deck.cards.length} flashcards created!`)
-        router.push(`/decks/${data.deck.id}`)
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response stream')
+
+      const decoder = new TextDecoder()
+      let bufferStr = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        bufferStr += decoder.decode(value, { stream: true })
+        const lines = bufferStr.split('\n')
+        
+        // Keep the last partial line in the buffer
+        bufferStr = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const data = JSON.parse(line)
+            
+            if (data.status === 'error') {
+              setError(data.error)
+              setLoading(false)
+              setStatus('idle')
+              return
+            }
+
+            if (data.status === 'analyzing') {
+              setStatus('analyzing')
+            } else if (data.status === 'processing') {
+              setStatus('processing')
+              setEta(data.estimatedSeconds)
+              setPdfInfo({ pageCount: data.pageCount, type: data.pdfType })
+            } else if (data.status === 'saving') {
+              setStatus('saving')
+            } else if (data.status === 'done') {
+              setStatus('done')
+              if (data.existing) {
+                toast.success('You already have this deck!')
+                router.push(`/decks/${data.deckId}`)
+              } else if (data.deck) {
+                toast.success(`${data.deck.cards.length} flashcards created!`)
+                router.push(`/decks/${data.deck.id}`)
+              }
+            }
+          } catch (e) {
+            console.error('JSON parse error from stream:', e)
+          }
+        }
       }
     } catch {
       setError('Something went wrong. Please try again.')
-    } finally {
       setLoading(false)
+      setStatus('idle')
     }
   }
 
   if (loading) {
-    return <LoadingIngestion fileName={fileName} fileSizeBytes={fileSizeBytes} />
+    return <LoadingIngestion fileName={fileName} fileSizeBytes={fileSizeBytes} status={status} etaSeconds={eta} pdfInfo={pdfInfo} />
   }
 
   return (
