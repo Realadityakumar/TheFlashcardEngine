@@ -1,9 +1,19 @@
-import Link from 'next/link'
-import { Inter } from 'next/font/google'
+import { Syne, DM_Sans } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
+import Navbar from '@/components/Navbar'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const syne = Syne({ 
+  subsets: ['latin'], 
+  weight: ['400','600','700','800'], 
+  variable: '--font-display' 
+})
+
+const dmSans = DM_Sans({ 
+  subsets: ['latin'], 
+  weight: ['300','400','500'], 
+  variable: '--font-body' 
+})
 
 export const metadata = {
   title: 'Flashcard Engine',
@@ -16,32 +26,31 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <nav className="fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-gray-100">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 h-full flex items-center justify-between">
-            <Link
-              href="/"
-              className="font-bold text-lg text-gray-900 hover:text-blue-600 transition-colors"
-            >
-              Flashcard Engine
-            </Link>
-            <Link
-              href="/decks"
-              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              My Decks
-            </Link>
-          </div>
-        </nav>
-        <main className="pt-14 min-h-screen max-w-5xl mx-auto px-4 sm:px-6">
+    <html lang="en" className={`${syne.variable} ${dmSans.variable}`}>
+      <body className="antialiased font-[family-name:var(--font-body)]">
+        <Navbar />
+        <main className="pt-[60px] min-h-screen max-w-[1200px] mx-auto px-4 sm:px-6">
           {children}
         </main>
         <Toaster
           position="bottom-center"
           toastOptions={{
             duration: 3000,
-            style: { borderRadius: '12px', fontSize: '14px' },
+            style: {
+              background: '#161625',
+              color: '#f0f0ff',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              fontSize: '13px',
+              fontFamily: 'var(--font-body)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            },
+            success: {
+              iconTheme: { primary: '#00e5a0', secondary: '#0f0f1a' }
+            },
+            error: {
+              iconTheme: { primary: '#ff4d6d', secondary: '#0f0f1a' }
+            },
           }}
         />
       </body>

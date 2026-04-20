@@ -1,15 +1,14 @@
-
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
+import { gsap } from 'gsap'
 import FlashCard from '@/components/FlashCard'
 import RatingButtons from '@/components/RatingButtons'
 import { PageTransition } from '@/components/PageTransition'
 import { UpcomingSchedule } from '@/components/UpcomingSchedule'
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Card {
   id: string
@@ -33,8 +32,6 @@ interface ScheduleEntry {
 
 type SessionState = 'loading' | 'empty' | 'studying' | 'complete'
 
-// ─── Session stats ────────────────────────────────────────────────────────────
-
 interface SessionStats {
   again: number
   hard: number
@@ -42,17 +39,11 @@ interface SessionStats {
   easy: number
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
-
 export default function StudyPage() {
   const params = useParams()
   const router = useRouter()
   const deckId = params.id as string
 
-  // Queue-based session state
-  // sessionQueue: cards still to review (Again cards are re-appended here)
-  // completedIds: Set of card IDs that have been rated Hard/Good/Easy (done for this session)
-  // originalTotal: how many cards were fetched at session start (for progress bar)
   const [sessionQueue, setSessionQueue] = useState<Card[]>([])
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
   const [originalTotal, setOriginalTotal] = useState(0)
@@ -62,12 +53,18 @@ export default function StudyPage() {
   const [sessionStats, setSessionStats] = useState<SessionStats>({ again: 0, hard: 0, good: 0, easy: 0 })
   const [pageState, setPageState] = useState<SessionState>('loading')
 
-  // Schedule data shown on completion screen
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([])
   const [nextReviewAt, setNextReviewAt] = useState<string | null>(null)
   const [loadingSchedule, setLoadingSchedule] = useState(false)
 
-  // ── Fetch due cards on mount ────────────────────────────────────────────────
+  const [deckTitle, setDeckTitle] = useState('Deck')
+
+  useEffect(() => {
+    fetch('/api/decks').then(r => r.json()).then(data => {
+      const d = data.decks?.find((deck: any) => deck.id === deckId)
+      if (d) setDeckTitle(d.title)
+    }).catch(() => {})
+  }, [deckId])
 
   const fetchDueCards = useCallback(async () => {
     setPageState('loading')
@@ -83,19 +80,16 @@ export default function StudyPage() {
 
       if (data.cards.length === 0) {
         setPageState('empty')
-        fetchSchedule() // show when next review is even on empty state
+        fetchSchedule() 
       } else {
         setSessionQueue(data.cards)
         setOriginalTotal(data.cards.length)
         setPageState('studying')
       }
     } catch (err) {
-      console.error('[study] fetch error:', err)
       setPageState('empty')
     }
   }, [deckId])
-
-  // ── Fetch review schedule (called on session complete and empty state) ──────
 
   const fetchSchedule = useCallback(async () => {
     setLoadingSchedule(true)
@@ -107,7 +101,6 @@ export default function StudyPage() {
         setNextReviewAt(data.nextReviewAt)
       }
     } catch (err) {
-      console.error('[study] schedule fetch error:', err)
     } finally {
       setLoadingSchedule(false)
     }
@@ -116,8 +109,6 @@ export default function StudyPage() {
   useEffect(() => {
     fetchDueCards()
   }, [fetchDueCards])
-
-  // ── Space bar flips the card ────────────────────────────────────────────────
 
   useEffect(() => {
     if (pageState !== 'studying') return
@@ -131,8 +122,6 @@ export default function StudyPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [pageState, isFlipped])
 
-  // ── Core rating handler ─────────────────────────────────────────────────────
-
   async function handleRate(rating: 0 | 1 | 2 | 3) {
     if (isSubmitting || sessionQueue.length === 0) return
     setIsSubmitting(true)
@@ -140,9 +129,6 @@ export default function StudyPage() {
     const currentCard = sessionQueue[0]
 
     try {
-      // Always POST to /api/review — this saves SM-2 result to DB
-      // Again → re-queue card to end of session (you must get it right before finishing)
-      // Hard/Good/Easy → card is done for this session (SM-2 schedules future review)
       const res = await fetch('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,18 +136,12 @@ export default function StudyPage() {
       })
 
       if (!res.ok) throw new Error('Review save failed')
-
       const data = await res.json()
 
-      // Update sessionStats
       const statKey = ['again', 'hard', 'good', 'easy'][rating] as keyof SessionStats
       setSessionStats(prev => ({ ...prev, [statKey]: prev[statKey] + 1 }))
 
       if (rating === 0) {
-        // ── Again (0) ─────────────────────────────────────────────────────────
-        // Re-queue: move current card to end of session queue
-        // Update the card's SM-2 values locally so the preview intervals
-        // on RatingButtons reflect the new state if the card appears again
         const updatedCard: Card = {
           ...currentCard,
           easeFactor: data.card.easeFactor,
@@ -170,16 +150,10 @@ export default function StudyPage() {
         }
         setSessionQueue(q => [...q.slice(1), updatedCard])
       } else {
-        // ── Hard (1), Good (2), or Easy (3) ───────────────────────────────────
-        // Card is done for this session. SM-2 already scheduled the future review:
-        //   Hard → shorter interval (e.g., 3 days)
-        //   Good → normal interval (e.g., 6 days)
-        //   Easy → boosted interval (e.g., 10 days)
         setCompletedIds(prev => new Set([...prev, currentCard.id]))
         const newQueue = sessionQueue.slice(1)
         setSessionQueue(newQueue)
 
-        // If queue is now empty, session is complete
         if (newQueue.length === 0) {
           fireConfetti()
           await fetchSchedule()
@@ -187,18 +161,12 @@ export default function StudyPage() {
           return
         }
       }
-
-      // Advance to next card (flip back to front)
       setIsFlipped(false)
-
     } catch (err) {
-      console.error('[study] rate error:', err)
     } finally {
       setIsSubmitting(false)
     }
   }
-
-  // ── Confetti ────────────────────────────────────────────────────────────────
 
   async function fireConfetti() {
     try {
@@ -207,65 +175,73 @@ export default function StudyPage() {
     } catch { }
   }
 
-  // ── Progress calculation ────────────────────────────────────────────────────
-
-  // completedIds.size = cards truly finished (Good/Easy)
-  // sessionQueue unique IDs = cards still pending
-  // Progress only advances when a card is finished, not when it's re-queued
   const uniqueRemaining = new Set(sessionQueue.map(c => c.id)).size
   const progressPercent = originalTotal > 0
     ? Math.round((completedIds.size / originalTotal) * 100)
     : 0
 
-  // Total reviewed in this session (including re-queue passes)
+  useEffect(() => {
+    if (pageState === 'studying') {
+      gsap.to('.progress-fill', {
+        width: `${progressPercent}%`,
+        duration: 0.6,
+        ease: 'power2.out'
+      })
+    }
+  }, [progressPercent, pageState])
+
   const totalReviewed = sessionStats.again + sessionStats.hard + sessionStats.good + sessionStats.easy
   const sessionRetention = totalReviewed > 0
     ? Math.round(((sessionStats.good + sessionStats.easy) / totalReviewed) * 100)
     : 0
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
-
-  // STATE: loading
   if (pageState === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-[#6c63ff] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
-  // STATE: empty (all caught up)
   if (pageState === 'empty') {
     return (
       <PageTransition>
-        <div className="max-w-md mx-auto text-center py-20 px-4">
-          {/* Checkmark */}
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center px-4">
+          <motion.div 
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            className="w-[72px] h-[72px] flex items-center justify-center rounded-full"
+            style={{ background: 'rgba(0,229,160,0.1)', border: '2px solid rgba(0,229,160,0.2)' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
+              <path stroke="#00e5a0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
-          </div>
+          </motion.div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[#f0f0ff] mt-5">
+            You're all caught up!
+          </h1>
+          <p className="text-sm text-[#8888aa] mt-2">
+            No cards are due right now.
+          </p>
 
-          <h1 className="text-2xl font-bold text-gray-900 mt-5">You are all caught up!</h1>
-          <p className="text-gray-500 mt-2">No cards are due right now.</p>
-
-          {/* Upcoming schedule */}
           {!loadingSchedule && schedule.length > 0 && (
-            <div className="mt-8 bg-gray-50 rounded-2xl p-5 text-left">
+            <div className="glass rounded-[16px] p-5 mt-6 text-left w-full">
               <UpcomingSchedule schedule={schedule} nextReviewAt={nextReviewAt} />
             </div>
           )}
 
-          <div className="flex gap-3 justify-center mt-8">
+          <div className="flex gap-3 justify-center mt-8 w-full">
             <button
               onClick={() => router.push('/decks')}
-              className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition-colors"
+              className="flex-1 py-2.5 rounded-xl border border-[rgba(255,255,255,0.08)] text-[#8888aa] text-sm hover:text-[#f0f0ff] hover:border-[rgba(255,255,255,0.15)] transition-colors"
             >
               Back to decks
             </button>
             <button
               onClick={() => router.push(`/decks/${deckId}`)}
-              className="px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors"
+              className="flex-1 py-2.5 rounded-xl text-white text-sm transition-all focus:outline-none hover:brightness-110"
+              style={{ background: 'linear-gradient(135deg, #6c63ff, #00d2ff)' }}
             >
               View stats
             </button>
@@ -275,107 +251,116 @@ export default function StudyPage() {
     )
   }
 
-  // STATE: complete (session finished)
   if (pageState === 'complete') {
     return (
       <PageTransition>
-        <div className="max-w-md mx-auto py-12 px-4">
-          {/* Header */}
+        <motion.div 
+          className="max-w-md mx-auto py-12 px-4"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        >
           <div className="text-center">
             <div className="text-5xl mb-3">🎉</div>
-            <h1 className="text-2xl font-bold text-gray-900">Session complete!</h1>
-            <p className={`text-sm mt-1 font-medium ${sessionRetention >= 70 ? 'text-green-600' : 'text-orange-500'}`}>
+            <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-gradient">
+              Session complete
+            </h1>
+            <p className="text-sm mt-3 text-[#4a4a6a]">
               {sessionRetention >= 70
                 ? 'Great work — strong retention!'
                 : 'Keep going — practice builds memory.'}
             </p>
           </div>
 
-          {/* Session stats */}
-          <div className="grid grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-4 gap-3 mt-8">
             {[
-              { label: 'Again', value: sessionStats.again, color: 'bg-red-50 text-red-600' },
-              { label: 'Hard', value: sessionStats.hard, color: 'bg-orange-50 text-orange-600' },
-              { label: 'Good', value: sessionStats.good, color: 'bg-blue-50 text-blue-600' },
-              { label: 'Easy', value: sessionStats.easy, color: 'bg-green-50 text-green-600' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className={`${color} rounded-xl py-3 text-center`}>
-                <div className="text-2xl font-bold">{value}</div>
-                <div className="text-xs mt-0.5">{label}</div>
+              { label: 'Again', value: sessionStats.again, bg: 'rgba(255,77,109,0.08)', color: '#ff4d6d' },
+              { label: 'Hard', value: sessionStats.hard, bg: 'rgba(255,181,71,0.08)', color: '#ffb547' },
+              { label: 'Good', value: sessionStats.good, bg: 'rgba(108,99,255,0.08)', color: '#6c63ff' },
+              { label: 'Easy', value: sessionStats.easy, bg: 'rgba(0,229,160,0.08)', color: '#00e5a0' },
+            ].map(({ label, value, bg, color }) => (
+              <div key={label} className="rounded-[14px] py-[14px] px-[8px] text-center" style={{ background: bg, color }}>
+                <div className="font-[family-name:var(--font-mono)] text-2xl font-semibold leading-none">{value}</div>
+                <div className="text-xs mt-1.5">{label}</div>
               </div>
             ))}
           </div>
 
-          {/* Retention rate */}
-          <div className="mt-4 bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-gray-500">Session retention</span>
-            <span className="text-sm font-semibold text-gray-800">{sessionRetention}%</span>
+          <div className="mt-5 glass rounded-xl px-4 py-3 flex items-center justify-between">
+            <span className="text-sm text-[#8888aa]">Retention rate</span>
+            <span className="font-[family-name:var(--font-mono)] text-sm font-semibold" style={{ color: sessionRetention >= 70 ? '#00e5a0' : '#ffb547' }}>
+              {sessionRetention}%
+            </span>
           </div>
 
-          {/* ── Upcoming schedule (the key addition) ── */}
-          {/* This shows the student WHEN to come back.
-              Without this, SM-2 schedules cards but the student never knows. */}
           {!loadingSchedule && schedule.length > 0 && (
-            <div className="mt-6 bg-gray-50 rounded-2xl p-5">
+            <div className="mt-5 glass rounded-2xl p-5">
               <UpcomingSchedule schedule={schedule} nextReviewAt={nextReviewAt} />
             </div>
           )}
           {loadingSchedule && (
-            <div className="mt-6 bg-gray-50 rounded-2xl p-5 flex items-center justify-center">
-              <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+            <div className="mt-5 glass rounded-2xl p-5 flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-[rgba(255,255,255,0.1)] border-t-[#6c63ff] rounded-full animate-spin" />
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-3 mt-8">
             <button
               onClick={fetchDueCards}
-              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition-colors"
+              className="flex-1 py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-[#8888aa] text-sm hover:text-[#f0f0ff] hover:border-[rgba(255,255,255,0.15)] transition-colors focus:outline-none"
             >
               Study again
             </button>
             <button
               onClick={() => router.push('/decks')}
-              className="flex-1 py-3 rounded-xl bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors"
+              className="flex-1 py-3 rounded-xl text-white text-sm transition-all focus:outline-none hover:brightness-110"
+              style={{ background: 'linear-gradient(135deg, #6c63ff, #00d2ff)' }}
             >
               Back to decks
             </button>
           </div>
-        </div>
+        </motion.div>
       </PageTransition>
     )
   }
 
-  // STATE: studying (main study UI)
   const currentCard = sessionQueue[0]
   if (!currentCard) return null
 
   return (
     <PageTransition>
-      <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="max-w-xl mx-auto px-4 py-8">
 
-        {/* ── Progress bar ─────────────────────────────────────────────────── */}
-        {/* Shows truly COMPLETED cards / original total
-            Does NOT advance when a card is re-queued (Again)
-            This makes it honest — the bar only moves when you genuinely learn a card */}
+        {/* Breadcrumb */}
+        <Link 
+          href={`/decks/${deckId}`}
+          className="inline-block text-xs text-[#4a4a6a] hover:text-[#8888aa] transition-colors mb-4"
+        >
+          ← {deckTitle}
+        </Link>
+        
+        {/* Stats row */}
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs text-gray-400">
-            {completedIds.size} of {originalTotal} learned
+          <span className="font-[family-name:var(--font-mono)] text-xs text-[#4a4a6a]">
+            {completedIds.size} of {originalTotal}
           </span>
-          <span className="text-xs text-gray-400">
-            {uniqueRemaining} card{uniqueRemaining !== 1 ? 's' : ''} remaining
+          <span className="font-[family-name:var(--font-mono)] text-xs text-[#4a4a6a]">
+            {uniqueRemaining} remaining
           </span>
         </div>
-        <div className="w-full bg-gray-100 rounded-full h-1.5 mb-8">
+
+        {/* Progress bar container */}
+        <div className="w-full bg-[#161625] rounded-[99px] h-1 mb-8 overflow-hidden progress-bar-track">
           <div
-            className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
-            style={{ width: `${progressPercent}%` }}
+            className="progress-fill h-full rounded-[99px]"
+            style={{ 
+              width: '0%', 
+              background: 'linear-gradient(90deg, #6c63ff, #00d2ff)'
+            }}
           />
         </div>
 
-        {/* ── Re-queue indicator ───────────────────────────────────────────── */}
-        {/* Shows when a card has been seen before this session — tells the student
-            they are in a re-queue pass (only happens with Again) */}
+        {/* Re-queue indicator */}
         {sessionStats.again > 0 && (
           <AnimatePresence>
             {sessionQueue.filter(c => c.id === currentCard.id).length > 1 ||
@@ -385,17 +370,19 @@ export default function StudyPage() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="text-center mb-3"
+                className="text-center mb-4"
               >
-                <span className="text-xs bg-orange-50 text-orange-500 px-3 py-1 rounded-full">
-                  Reviewing again — this card came back
+                <span 
+                  className="text-xs px-3 py-1.5 rounded-full mx-auto w-fit"
+                  style={{ background: 'rgba(255,181,71,0.08)', border: '1px solid rgba(255,181,71,0.15)', color: '#ffb547' }}
+                >
+                  ↩ Reviewing again
                 </span>
               </motion.div>
             ) : null}
           </AnimatePresence>
         )}
 
-        {/* ── Flash card ───────────────────────────────────────────────────── */}
         <FlashCard
           front={currentCard.front}
           back={currentCard.back}
@@ -406,38 +393,22 @@ export default function StudyPage() {
           onFlip={() => !isFlipped && setIsFlipped(true)}
         />
 
-        {/* ── Rating buttons (appear after flip) ──────────────────────────── */}
-        <AnimatePresence>
-          {isFlipped && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mt-6"
-            >
-              {/* Explanation of what the buttons do — makes SM-2 visible */}
-              <p className="text-xs text-center text-gray-400 mb-3">
-                Again → card comes back this session.
-                Hard/Good/Easy → scheduled for later (see intervals below).
-              </p>
-
-              <RatingButtons
-                onRate={handleRate}
-                disabled={isSubmitting}
-                cardEaseFactor={currentCard.easeFactor}
-                cardInterval={currentCard.interval}
-                cardRepetitions={currentCard.repetitions}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Space bar hint */}
-        {!isFlipped && (
-          <p className="text-center text-xs text-gray-300 mt-6">
-            Press Space to reveal
-          </p>
+        {isFlipped ? (
+          <div className="mt-8">
+            <RatingButtons
+              onRate={handleRate}
+              disabled={isSubmitting}
+            />
+          </div>
+        ) : (
+          <div className="text-center mt-8">
+            <p className="text-xs text-[#4a4a6a]">
+              Press <span 
+                className="font-[family-name:var(--font-mono)] px-2 py-0.5 rounded-[6px] mx-1 inline-block"
+                style={{ background: '#161625', border: '1px solid #1e1e30', borderBottomWidth: '3px', color: '#4a4a6a' }}
+              >Space</span> to reveal
+            </p>
+          </div>
         )}
 
       </div>

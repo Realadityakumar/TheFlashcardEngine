@@ -74,17 +74,34 @@ export async function POST(request: NextRequest) {
           pdfType = await detectPDFType(buffer)
         }
 
-        // Calculate ETA accurately based on API calls (chunks) rather than per-page
-        let estimatedSeconds = 15 // base overhead
-        
-        if (pageCount > CHUNK_THRESHOLD) {
-           const chunksCount = Math.ceil(pageCount / CHUNK_SIZE)
-           // Each chunk is one text generation call + 2s sleep
-           estimatedSeconds += chunksCount * 20 
-        } else {
-           // Single prompt to Gemini
-           estimatedSeconds += pdfType === 'vision' ? 25 : 15
-        }
+            // Calculate ETA based on API calls (chunks) rather than per-page.
+            // Use a small safety buffer without overestimating vision runs.
+            const BASE_OVERHEAD_SECONDS = 10
+            const CHUNK_CALL_SECONDS = 22
+            const TEXT_BASE_SECONDS = 8
+            const TEXT_PER_PAGE_SECONDS = 1.2
+            const VISION_BASE_SECONDS = 10
+            const VISION_PER_PAGE_SECONDS = 1.0
+            const ETA_FUDGE_TEXT = 1.1
+            const ETA_FUDGE_VISION = 1.05
+            const ETA_FUDGE_CHUNK = 1.15
+
+            let estimatedSeconds = BASE_OVERHEAD_SECONDS
+
+            if (pageCount > CHUNK_THRESHOLD) {
+              const chunksCount = Math.ceil(pageCount / CHUNK_SIZE)
+              // Each chunk is one text generation call + 2s sleep
+              estimatedSeconds += chunksCount * CHUNK_CALL_SECONDS
+              estimatedSeconds = Math.max(15, Math.round(estimatedSeconds * ETA_FUDGE_CHUNK))
+              } else if (pdfType === 'vision') {
+                // Single prompt to Gemini (vision)
+                estimatedSeconds += VISION_BASE_SECONDS + pageCount * VISION_PER_PAGE_SECONDS
+                estimatedSeconds = Math.max(12, Math.round(estimatedSeconds * ETA_FUDGE_VISION))
+              } else {
+                // Single prompt to Gemini (text)
+                estimatedSeconds += TEXT_BASE_SECONDS + pageCount * TEXT_PER_PAGE_SECONDS
+                estimatedSeconds = Math.max(10, Math.round(estimatedSeconds * ETA_FUDGE_TEXT))
+              }
 
         send({ 
           status: 'processing', 

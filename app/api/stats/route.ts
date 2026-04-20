@@ -64,8 +64,12 @@ export async function GET(request: NextRequest) {
   const streak = calculateStreak(recentReviews.map(r => r.reviewedAt))
   const masteryPercent = total > 0 ? Math.round((mastered / total) * 100) : 0
 
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const reviewedToday = recentReviews.filter(r => new Date(r.reviewedAt) >= startOfToday).length
+
   return NextResponse.json({
-    deckId, mastered, shaky, newCards: newCards, dueToday, total,
+    deckId, mastered, shaky, newCards, dueToday, total, reviewedToday,
     masteryPercent, retentionRate, streak,
     lastStudied: deck?.lastStudied ?? null,
     createdAt: deck?.createdAt ?? null,
