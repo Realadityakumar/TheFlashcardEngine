@@ -1,15 +1,112 @@
 // PDF type detection — determines whether a PDF contains educational images
 // that warrant vision-based processing, or is text-only.
 
-// @ts-ignore -- legacy build has .d.mts types but TS resolves .mjs differently
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { join } from 'path'
 
-// Point to the legacy worker for Node.js server-side usage
-pdfjsLib.GlobalWorkerOptions.workerSrc = join(
-  process.cwd(),
-  'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'
-)
+// ---------------------------------------------------------------------------
+// Polyfills for serverless environments (Vercel) where DOM APIs are missing.
+// pdfjs-dist expects DOMMatrix, ImageData, and Path2D to exist globally.
+// We only use pdfjs for text extraction and operator list analysis (no
+// rendering), so minimal stubs are sufficient.
+// ---------------------------------------------------------------------------
+function ensurePolyfills() {
+  if (typeof globalThis.DOMMatrix === 'undefined') {
+    (globalThis as any).DOMMatrix = class DOMMatrix {
+      a = 1; b = 0; c = 0; d = 1; e = 0; f = 0
+      m11 = 1; m12 = 0; m13 = 0; m14 = 0
+      m21 = 0; m22 = 1; m23 = 0; m24 = 0
+      m31 = 0; m32 = 0; m33 = 1; m34 = 0
+      m41 = 0; m42 = 0; m43 = 0; m44 = 1
+      is2D = true; isIdentity = true
+
+      constructor(init?: string | number[]) {
+        if (Array.isArray(init) && init.length >= 6) {
+          this.a = this.m11 = init[0]
+          this.b = this.m12 = init[1]
+          this.c = this.m21 = init[2]
+          this.d = this.m22 = init[3]
+          this.e = this.m41 = init[4]
+          this.f = this.m42 = init[5]
+          this.is2D = true
+          this.isIdentity = false
+        }
+      }
+
+      multiply() { return new DOMMatrix() }
+      inverse() { return new DOMMatrix() }
+      translate() { return new DOMMatrix() }
+      scale() { return new DOMMatrix() }
+      rotate() { return new DOMMatrix() }
+      transformPoint(p: any) { return p || { x: 0, y: 0, z: 0, w: 1 } }
+      toFloat64Array() { return new Float64Array(16) }
+      toString() { return `matrix(${this.a},${this.b},${this.c},${this.d},${this.e},${this.f})` }
+
+      static fromMatrix() { return new DOMMatrix() }
+      static fromFloat64Array() { return new DOMMatrix() }
+    }
+  }
+
+  if (typeof globalThis.ImageData === 'undefined') {
+    (globalThis as any).ImageData = class ImageData {
+      width: number
+      height: number
+      data: Uint8ClampedArray
+
+      constructor(sw: number | Uint8ClampedArray, sh?: number, _settings?: any) {
+        if (sw instanceof Uint8ClampedArray) {
+          this.data = sw
+          this.width = sh || 0
+          this.height = sw.length / ((sh || 1) * 4)
+        } else {
+          this.width = sw
+          this.height = sh || 0
+          this.data = new Uint8ClampedArray(this.width * this.height * 4)
+        }
+      }
+    }
+  }
+
+  if (typeof globalThis.Path2D === 'undefined') {
+    (globalThis as any).Path2D = class Path2D {
+      constructor(_path?: string | Path2D) {}
+      addPath() {}
+      closePath() {}
+      moveTo() {}
+      lineTo() {}
+      bezierCurveTo() {}
+      quadraticCurveTo() {}
+      arc() {}
+      arcTo() {}
+      ellipse() {}
+      rect() {}
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lazy pdfjs loader — polyfills must be set up BEFORE the module is evaluated,
+// so we use dynamic import instead of a static top-level import.
+// ---------------------------------------------------------------------------
+type PdfjsLib = typeof import('pdfjs-dist')
+
+let _pdfjs: PdfjsLib | null = null
+
+async function getPdfjs(): Promise<PdfjsLib> {
+  if (_pdfjs) return _pdfjs
+
+  ensurePolyfills()
+
+  // @ts-ignore -- legacy build has .d.mts types but TS resolves .mjs differently
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs') as unknown as PdfjsLib
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = join(
+    process.cwd(),
+    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'
+  )
+
+  _pdfjs = pdfjsLib
+  return pdfjsLib
+}
 
 const STANDARD_FONT_DATA_URL = join(
   process.cwd(),
@@ -38,7 +135,8 @@ export async function detectPDFType(
   buffer: Buffer,
   options: { maxPages?: number, skipPages?: number } = {}
 ): Promise<'vision' | 'text'> {
-  let doc: pdfjsLib.PDFDocumentProxy
+  const pdfjsLib = await getPdfjs()
+  let doc: any
 
   try {
     const data = new Uint8Array(buffer)
@@ -173,7 +271,8 @@ export async function detectPDFType(
 // Skips pages that fail to parse.
 // ---------------------------------------------------------------------------
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  let doc: pdfjsLib.PDFDocumentProxy
+  const pdfjsLib = await getPdfjs()
+  let doc: any
 
   try {
     const data = new Uint8Array(buffer)
@@ -190,7 +289,7 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
       const page = await doc.getPage(pageNum)
       const content = await page.getTextContent()
       const pageText = (content.items as Array<{ str?: string }>)
-        .filter((item): item is { str: string } => typeof item.str === 'string')
+        .filter((item: any): item is { str: string } => typeof item.str === 'string')
         .map((item: { str: string }) => item.str)
         .join(' ')
         .trim()
@@ -210,6 +309,7 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
 // Returns the total number of pages in the PDF buffer.
 // ---------------------------------------------------------------------------
 export async function getPDFPageCount(buffer: Buffer): Promise<number> {
+  const pdfjsLib = await getPdfjs()
   const data = new Uint8Array(buffer)
   const pdf = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
   return pdf.numPages
@@ -223,6 +323,7 @@ export async function extractTextByChunks(
   buffer: Buffer,
   chunkSize: number = 30
 ): Promise<{ chunkIndex: number; startPage: number; endPage: number; text: string }[]> {
+  const pdfjsLib = await getPdfjs()
 
   const data = new Uint8Array(buffer)
   const pdf = await pdfjsLib.getDocument({ data, disableFontFace: true, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise
