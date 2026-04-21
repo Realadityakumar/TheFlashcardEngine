@@ -57,16 +57,16 @@ export async function GET(request: NextRequest) {
   const retentionRate =
     recentReviews.length > 0
       ? parseFloat(
-          (recentReviews.filter(r => r.rating >= 2).length / recentReviews.length).toFixed(2)
+          (recentReviews.filter((r: typeof recentReviews[number]) => r.rating >= 2).length / recentReviews.length).toFixed(2)
         )
       : 0
 
-  const streak = calculateStreak(recentReviews.map(r => r.reviewedAt))
+  const streak = calculateStreak(recentReviews.map((r: typeof recentReviews[number]) => r.reviewedAt))
   const masteryPercent = total > 0 ? Math.round((mastered / total) * 100) : 0
 
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
-  const reviewedToday = recentReviews.filter(r => new Date(r.reviewedAt) >= startOfToday).length
+  const reviewedToday = recentReviews.filter((r: typeof recentReviews[number]) => new Date(r.reviewedAt) >= startOfToday).length
 
   return NextResponse.json({
     deckId, mastered, shaky, newCards, dueToday, total, reviewedToday,

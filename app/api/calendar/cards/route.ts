@@ -149,10 +149,10 @@ export async function GET(request: NextRequest) {
       ])
 
       const filteredCards = cards.filter(
-        (card) => card.deck && card.deck.id && card.deck.title
+        (card: typeof cards[number]) => card.deck && card.deck.id && card.deck.title
       )
 
-      const cardsWithState: DueCard[] = filteredCards.map((card) => ({
+      const cardsWithState: DueCard[] = filteredCards.map((card: typeof cards[number]) => ({
         ...card,
         deck: card.deck,
         masteryState: getMasteryState(card.repetitions, card.easeFactor),
@@ -194,8 +194,8 @@ export async function GET(request: NextRequest) {
     })
 
     const cards: ReviewedCard[] = reviewLogs
-      .filter((log) => log.card && log.card.deck)
-      .map((log) => ({
+      .filter((log: typeof reviewLogs[number]) => log.card && log.card.deck)
+      .map((log: typeof reviewLogs[number]) => ({
         id: log.card.id,
         front: log.card.front,
         topic: log.card.topic,
