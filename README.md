@@ -8,6 +8,31 @@ Upload a PDF → Gemini extracts key concepts → SM-2 algorithm schedules revie
 
 ---
 
+## ✨ Key Feature: Interactive Study Calendar
+
+> **What sets FlashcardEngine apart** — most flashcard apps show you a queue and nothing else. FlashcardEngine gives you a full **visual study calendar** that turns your learning into something you can see, plan around, and feel motivated by.
+
+### What it does
+
+🗓️ **Monthly Heatmap View** — A color-coded calendar grid showing your entire study timeline at a glance. Past days show retention dots (green = strong recall, amber = mixed, red = struggled). Future days show badge counts for upcoming due cards.
+
+📊 **Week & Month Forecasting** — See exactly how many cards are due this week and this month so you can plan study sessions around your schedule.
+
+🔍 **Day Drill-Down Panel** — Click any day to open a slide-in panel showing:
+- **Future days:** Every card scheduled with mastery indicators + one-click "Study now"
+- **Today:** Due count, overdue cards pulled in, and a "You're all caught up! 🎉" state
+- **Past days:** Full review history with per-card ratings (Again/Hard/Good/Easy) and session retention %
+
+📚 **Deck Filtering** — Filter the entire calendar by a specific deck to focus on one subject at a time.
+
+🔥 **30-Day Activity Streak** — A GitHub-style contribution heatmap at the bottom tracks your daily study activity with current streak and longest streak counters.
+
+### Why it matters
+
+Spaced repetition works, but only if you **show up consistently**. The calendar transforms an invisible algorithm into a visible commitment device — you can see your streak, spot gaps, and feel the momentum of consecutive study days. It's the difference between "the app says I have cards due" and "I can see my learning journey."
+
+---
+
 ## Architecture Overview
 
 ```
@@ -119,6 +144,30 @@ Cards are classified into three states for the mastery ring visualization:
 ### Streak System (`lib/streak.ts`)
 
 Counts consecutive calendar days with at least one review. The streak remains active if the last review was today or yesterday (grace period for timezone edge cases).
+
+### Study Calendar System (`/api/calendar` + `CalendarGrid` + `DayDetailPanel`)
+
+The calendar is powered by two API routes that serve different levels of detail:
+
+**`/api/calendar`** — Returns month-level aggregate data in a single query batch:
+- **Future days:** Cards grouped by due date with per-deck breakdown
+- **Past days:** Review logs grouped by date with correct/total counts
+- **Today stats:** Due count, reviewed today, due this week, due this month
+
+All four database queries run in **parallel via `Promise.all`** — no sequential waterfall.
+
+**`/api/calendar/cards`** — Returns card-level detail for the day drill-down panel:
+- **Due view:** Full card data with mastery state classification, grouped by deck
+- **Reviewed view:** Review logs with per-card ratings, linked back to decks
+- **Today special case:** Merges overdue cards (due before today) into today's count
+
+The `CalendarGrid` component renders a responsive 7-column grid with:
+- GSAP-animated badge entrances (`back.out` easing for a springy feel)
+- Month transition animations (opacity + x-axis slide)
+- Navigation clamped to ±3 months past / +6 months future
+- Color-coded retention dots using a 3-tier threshold (≥80% green, ≥50% amber, red)
+
+The `DayDetailPanel` adapts its layout based on screen size — **slide-in from right** on desktop, **slide-up bottom sheet** on mobile — using Framer Motion spring physics.
 
 ### Database Schema
 
