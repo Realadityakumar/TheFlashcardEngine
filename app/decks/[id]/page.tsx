@@ -122,7 +122,7 @@ export default function DeckDetailPage() {
             ease: 'power2.out',
             snap: { innerText: 1 },
             delay: i * 0.1,
-            onUpdate: function() {
+            onUpdate: function () {
               if (target) {
                 const suffix = target.dataset.suffix || ''
                 target.textContent = Math.round(Number(this.targets()[0].innerText)) + suffix
@@ -177,7 +177,8 @@ export default function DeckDetailPage() {
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto py-8 px-6 w-full">
-        <style dangerouslySetInnerHTML={{__html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           @keyframes shimmer {
             0% { background-position: -200% 0 }
             100% { background-position: 200% 0 }
@@ -229,7 +230,7 @@ export default function DeckDetailPage() {
   return (
     <PageTransition>
       <div className="max-w-5xl mx-auto py-8 px-6">
-        
+
         {/* ── SECTION 1 — Header ── */}
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold text-[#f0f0ff]">
           {deck.title}
@@ -256,7 +257,8 @@ export default function DeckDetailPage() {
             className="px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 bg-transparent delete-btn"
             style={{ border: '1px solid rgba(255,77,109,0.2)', color: '#ff4d6d' }}
           >
-            <style dangerouslySetInnerHTML={{__html: `
+            <style dangerouslySetInnerHTML={{
+              __html: `
               .delete-btn:hover {
                 background: rgba(255,77,109,0.08);
               }
@@ -293,7 +295,7 @@ export default function DeckDetailPage() {
 
             <div className="stat-card bg-[#0f0f1a] border border-[rgba(255,255,255,0.04)] rounded-[14px] p-[14px_16px] flex flex-col opacity-0">
               <span className="text-xs text-[#4a4a6a] uppercase tracking-wide mb-1">Due today</span>
-              <span 
+              <span
                 className="font-[family-name:var(--font-mono)] text-2xl font-semibold gsap-counter"
                 style={{ color: stats.dueToday > 0 ? '#6c63ff' : '#f0f0ff' }}
                 data-value={stats.dueToday}
@@ -302,7 +304,7 @@ export default function DeckDetailPage() {
 
             <div className="stat-card bg-[#0f0f1a] border border-[rgba(255,255,255,0.04)] rounded-[14px] p-[14px_16px] flex flex-col opacity-0">
               <span className="text-xs text-[#4a4a6a] uppercase tracking-wide mb-1">Study streak</span>
-              <span 
+              <span
                 className="font-[family-name:var(--font-mono)] text-2xl font-semibold gsap-counter"
                 style={{ color: stats.streak > 0 ? '#ffb547' : '#f0f0ff' }}
                 data-value={stats.streak}
@@ -312,7 +314,7 @@ export default function DeckDetailPage() {
 
             <div className="stat-card bg-[#0f0f1a] border border-[rgba(255,255,255,0.04)] rounded-[14px] p-[14px_16px] flex flex-col opacity-0">
               <span className="text-xs text-[#4a4a6a] uppercase tracking-wide mb-1">Retention</span>
-              <span 
+              <span
                 className="font-[family-name:var(--font-mono)] text-2xl font-semibold gsap-counter"
                 style={{ color: stats.retentionRate >= 0.7 ? '#00e5a0' : '#ffb547' }}
                 data-value={Math.round(stats.retentionRate * 100)}
@@ -373,8 +375,8 @@ export default function DeckDetailPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={`
                   text-xs px-3 py-1.5 rounded-full border transition duration-150
-                  ${isActive 
-                    ? 'bg-[rgba(108,99,255,0.15)] border-[rgba(108,99,255,0.3)] text-[#6c63ff] font-medium' 
+                  ${isActive
+                    ? 'bg-[rgba(108,99,255,0.15)] border-[rgba(108,99,255,0.3)] text-[#6c63ff] font-medium'
                     : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)] text-[#8888aa] hover:text-[#f0f0ff]'}
                 `}
               >
@@ -386,7 +388,8 @@ export default function DeckDetailPage() {
 
         {/* Card list container */}
         <div className="bg-[#0f0f1a] border border-[rgba(255,255,255,0.04)] rounded-[16px] overflow-hidden">
-          <style dangerouslySetInnerHTML={{__html: `
+          <style dangerouslySetInnerHTML={{
+            __html: `
             .card-row { transition: background 150ms ease; }
             .card-row:hover { background: rgba(255,255,255,0.02); }
             .card-row:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.04); }
@@ -408,7 +411,7 @@ export default function DeckDetailPage() {
                 </span>
 
                 {/* Topic badge */}
-                <span 
+                <span
                   className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap"
                   style={{ background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.2)', color: '#6c63ff' }}
                 >
@@ -418,9 +421,9 @@ export default function DeckDetailPage() {
                 {/* Type badge */}
                 <span
                   className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap"
-                  style={{ 
-                    background: typeBadgeStyles[card.type]?.bg || 'rgba(255,255,255,0.06)', 
-                    color: typeBadgeStyles[card.type]?.color || '#8888aa' 
+                  style={{
+                    background: typeBadgeStyles[card.type]?.bg || 'rgba(255,255,255,0.06)',
+                    color: typeBadgeStyles[card.type]?.color || '#8888aa'
                   }}
                 >
                   {card.type.replace('_', ' ')}
@@ -435,7 +438,7 @@ export default function DeckDetailPage() {
                 <div className="w-12 h-1 bg-[#161625] rounded-full overflow-hidden shrink-0">
                   <div
                     className="h-full rounded-full transition-all"
-                    style={{ 
+                    style={{
                       width: `${easeBarWidth(card.easeFactor)}%`,
                       background: easeBarColor(card.easeFactor)
                     }}

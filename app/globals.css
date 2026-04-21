@@ -137,3 +137,12 @@ h1, h2, h3 {
     line-height: normal !important;
   }
 }
+
+@keyframes today-pulse {
+  0%, 100% { border-color: rgba(108,99,255,0.4); }
+  50% { border-color: rgba(108,99,255,0.7); }
+}
+
+.animate-today-pulse {
+  animation: today-pulse 3s ease-in-out infinite;
+}
