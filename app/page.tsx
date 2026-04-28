@@ -337,7 +337,7 @@ export default function HomePage() {
           </Link>
 
           <div className="bg-[rgba(108,99,255,0.08)] border border-[rgba(108,99,255,0.15)] text-[11px] text-[#6c63ff] font-medium px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm selection:bg-transparent">
-            Built with Gemini 2.5 <span className="text-[10px]">✦</span>
+            Powered by Neural Engine<span className="text-[10px]">✦</span>
           </div>
         </div>
 
