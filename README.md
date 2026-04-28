@@ -4,7 +4,7 @@ Turn any PDF into a smart study deck powered by AI and spaced repetition.
 
 Upload a PDF → Gemini extracts key concepts → SM-2 algorithm schedules reviews → you retain more with less effort.
 
-**Live:** [flashcardengine.vercel.app](https://flashcardengine.vercel.app)
+**Live:** [theflashcardengine.devaditya.me](https://theflashcardengine.devaditya.me/)
 
 ---
 
