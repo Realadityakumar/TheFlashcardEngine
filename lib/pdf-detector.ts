@@ -315,13 +315,13 @@ export async function getPDFPageCount(buffer: Buffer): Promise<number> {
   return pdf.numPages
 }
 
-// Threshold: chunk anything over 200 pages
+// Threshold: chunk anything over 40 pages
 export const CHUNK_THRESHOLD = 40
-export const CHUNK_SIZE = 80  // Kept at 80 pages to respect Gemini's 5 requests/min free tier limit during text chunking
+export const CHUNK_SIZE = 40  // Chunk size aligned with threshold
 
 export async function extractTextByChunks(
   buffer: Buffer,
-  chunkSize: number = 30
+  chunkSize: number = 40
 ): Promise<{ chunkIndex: number; startPage: number; endPage: number; text: string }[]> {
   const pdfjsLib = await getPdfjs()
 

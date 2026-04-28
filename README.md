@@ -106,8 +106,7 @@ Upload → Validate → Hash Check → Detect Type → Generate Cards → Save
 
 If meaningful images are found → **vision path** (sends PDF as base64 to Gemini).  
 Otherwise → **text path** (extracts text via pdfjs, cheaper and faster).
-
-**Large PDFs** (> 40 pages) are chunked into 80-page segments and processed sequentially to respect Gemini's free-tier rate limits.
+**Large PDFs** (> 40 pages) are chunked into 40-page segments and processed sequentially to respect Gemini's free-tier rate limits.
 
 **Serverless Polyfills** — pdfjs-dist expects browser DOM APIs (`DOMMatrix`, `ImageData`, `Path2D`). These are polyfilled with minimal stubs before dynamic import since we only need text extraction, not rendering.
 
